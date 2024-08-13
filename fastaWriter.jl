@@ -24,7 +24,9 @@ for row in cell_mutations
     for mut in new_mutations
         mutations_present[mut] = 1
     end
-    write(fasta_output, replace(replace(chop(string(mutations_present); head=1, tail=1), ',' => ""), ' ' => "")*"\n")
+    seq = replace(replace(chop(string(mutations_present); head=1, tail=1), ',' => ""), ' ' => "")
+    wrapped_seq = replace(seq, r"(.{60})" => s"\1\n")
+    write(fasta_output, wrapped_seq*"\n")
 end
 
 close(fasta_output)
