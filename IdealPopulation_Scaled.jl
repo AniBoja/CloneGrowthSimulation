@@ -237,13 +237,13 @@ function lineage_to_newick(history::lineage)
 end
 
 # Go through each cell -> Identify what mutations it inherited and what mutations it developed -> 
-# Write out in a csv (Cell id, parent mutations, new (or default for progenitor cell) mutations)
+# Write out in a tsv (Cell id, parent mutations, new (or default for progenitor cell) mutations)
 function write_tree_mutations(history, step)
     cell_count = 0
-    cell_mutations = open("out/cell_mutations" * string(step) * ".csv", "a")
-    write(cell_mutations, "id,parent_mut,child_mut\n")
-    write(cell_mutations, string(0, ",[]", ",[", join(history.cancercells[1].cell.mutations |> collect
-                                                                            |> sort, ' '), "]", "\n"))
+    cell_mutations = open("out/cell_mutations_" * string(step) * ".tsv", "a")
+    write(cell_mutations, "id\tparent_mut\tnew_mut\n")
+    write(cell_mutations, string(0, "\t[]", "\t[", join(history.cancercells[1].cell.mutations |> collect
+                                                                            |> sort, ','), "]", "\n"))
     for j in eachindex(history.cancercells)
         history.cancercells[j].cellid = cell_count
         cell_count += 1
@@ -251,8 +251,8 @@ function write_tree_mutations(history, step)
             parent_mutations = Set(history.cancercells[j].parent.cell.mutations)
             new_mutations = setdiff(Set(history.cancercells[j].cell.mutations), parent_mutations)
             write(cell_mutations, string(history.cancercells[j].cellid,
-                ",[", join(parent_mutations |> collect |> sort, ' '), "]",
-                ",[", join(new_mutations |> collect |> sort, ' '), "]\n"))
+                "\t[", join(parent_mutations |> collect |> sort, ','), "]",
+                "\t[", join(new_mutations |> collect |> sort, ','), "]\n"))
         end
     end
     close(cell_mutations)
