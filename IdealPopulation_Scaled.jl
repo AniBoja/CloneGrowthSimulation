@@ -207,13 +207,21 @@ function process_mutations(cells, detLim)
 end
 
 function cellnode_to_newick(node::cancercell)
+    edge_length = ""
+    if (!isnothing(node.parent))
+        parent_mutations = Set(node.parent.mutations)
+        new_mutations = setdiff(Set(node.mutations), parent_mutations)
+        edge_length = length(new_mutations)
+    else
+        edge_length = 0
+    end
     if isnothing(node.lChild) && isnothing(node.rChild)
-        return "Cell" * string(node.id)
+        return "Cell" * string(node.id) * ":" * string(edge_length)
     else
         lChild_str = !isnothing(node.lChild) ? cellnode_to_newick(node.lChild) : ""
         rChild_str = !isnothing(node.rChild) ? cellnode_to_newick(node.rChild) : ""
         children_str = join(filter(!isempty, [lChild_str, rChild_str]), ",")
-        return "($children_str)Cell" * string(node.id)
+        return "($children_str)Cell" * string(node.id) * ":" * string(edge_length)
     end
 end
 
