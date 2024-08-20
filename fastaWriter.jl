@@ -4,7 +4,7 @@ cell_mutations = CSV.File("out/cell_mutations_100.tsv", delim="\t")
 fasta_output = open("cell_mutations.fasta", "a")
 for row in cell_mutations
     cell_id = row[1]
-    write(fasta_output, string(">Cell", cell_id, "\n"))
+    write(fasta_output, string(">", cell_id, "\n"))
     parent_mutations = []
     new_mutations = []
     mutations_present = zeros(Int, 266)
@@ -30,3 +30,4 @@ for row in cell_mutations
 end
 
 close(fasta_output)
+
