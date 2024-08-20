@@ -4,7 +4,7 @@
 - **nsteps** : the number of steps taken during the simulation.
 
 "
-type SSAStats
+struct SSAStats
     termination_status::UTF8String
     nsteps::Int64
 end
@@ -18,7 +18,7 @@ end
 - **tf** : the final simulation time (`Float64`)
 
 "
-type SSAArgs
+struct SSAArgs
     x0::Vector{Int64}
     F::Any
     nu::Matrix{Int64}
@@ -35,7 +35,7 @@ This type stores the output of `ssa`, and comprises of:
 - **args** : arguments passed to `ssa`.
 
 "
-type SSAResult
+struct SSAResult
     time::Vector{Float64}
     data::Matrix{Int64}
     stats::SSAStats
