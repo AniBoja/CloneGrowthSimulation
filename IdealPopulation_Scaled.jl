@@ -26,22 +26,16 @@ mutable struct cancercell
     mutations::Array{Int64,1}
     fitness::Float64
     epnumber::Float64
+    parent::Union{cancercell,Nothing}
+    lChild::Union{cancercell,Nothing}
+    rChild::Union{cancercell,Nothing}
+    status::String
+    id::Int64
 end
 
 # Tree structure for a cell. It points to its children and its parent. The cell id
 # is updated at the end of every iteration in the top-level for-loop and reflects
 # the order of each evolutionary step
-mutable struct cellnode
-    parent::Union{cellnode,Nothing}
-    lChild::Union{cellnode,Nothing}
-    rChild::Union{cellnode,Nothing}
-    cellid::Union{Int64,String}
-    cell::cancercell
-end
-
-mutable struct lineage
-    cancercells::Vector{cellnode}
-end
 
 function newmutations(cancercell, mutID, p, neoep_dist)
     cancercell.mutations = append!(cancercell.mutations, mutID)
@@ -60,7 +54,13 @@ function newmutations(cancercell, mutID, p, neoep_dist)
 end
 
 function copycell(cancercellold::cancercell)
-    newcancercell::cancercell = cancercell(copy(cancercellold.mutations), copy(cancercellold.fitness), copy(cancercellold.epnumber))
+    return cancercell(copy(cancercellold.mutations), copy(cancercellold.fitness),
+    copy(cancercellold.epnumber),
+    cancercellold.parent, 
+    cancercellold.lChild,
+    cancercellold.rChild,
+    cancercellold.status,
+    copy(cancercellold.id))
 end
 
 # Start population from a single progenitor cell that has an initial number of mutations, each mutation
@@ -70,9 +70,7 @@ function start_population(p, neoep_dist, initial_mut, allowNeoep=true, immThresh
     N = 1
     cells = cancercell[]
     muts = Dict{Int64,Float64}()
-    push!(cells, cancercell([], 1, 0))
-    cell = cellnode(nothing, nothing, nothing, 1, cancercell([], 1, 0))
-    history = lineage([cell])
+    push!(cells, cancercell([], 1, 0, nothing, nothing, nothing, "extant", 1))
     for i = 1:initial_mut
         if allowNeoep
             cells[1], mutID, neoep_val = newmutations(cells[1], mutID, p, neoep_dist)
@@ -85,7 +83,7 @@ function start_population(p, neoep_dist, initial_mut, allowNeoep=true, immThresh
 
     nonimm = 1 * (cells[1].epnumber < immThresh)
 
-    return cells, mutID, muts, nonimm, N, history
+    return cells, mutID, muts, nonimm, N
 
 end
 
@@ -94,7 +92,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
     dmax = d0 #dmax is updated throughout, starts from d0
 
     #initialize arrays and parameters
-    cells, mutID, muts, nonimm, N, history = start_population(p, neoep_dist, initial_mut)
+    cells, mutID, muts, nonimm, N = start_population(p, neoep_dist, initial_mut)
     Nvec = Int64[]
     push!(Nvec, N)
     t = 0.0
@@ -102,9 +100,12 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
     push!(tvec, t)
     nonimmvec = Int64[]
     push!(nonimmvec, nonimm)
-    while (N < Nmax) & (t < 300) #set so we can exit simulation where there is a lot of death
+    while (N < Nmax) && (t < 300) #set so we can exit simulation where there is a lot of death
         #pick a random cell
-        randcell = rand(1:N)
+        randcell = rand(1:length(cells))
+        while cells[randcell].status != "extant"
+            randcell = rand(1:length(cells))
+        end
         Nt = N
 
         #a cell's immunogenicity depends on its fitness, i.e. the summed antigenicity of neoepitopes
@@ -125,42 +126,27 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
             N = N + 1
             #copy cell and mutations for cell that reproduces
             push!(cells, copycell(cells[randcell]))
+            push!(cells, copycell(cells[randcell]))
             #total fitness (nonimmunogenicity) decreases as it might change in mutation step
             nonimm = nonimm - 1 * (cells[randcell].epnumber < immThresh)
-
             #add new mutations to both new cells, the number of mutations is Poisson distributed
             for i = 1:(rand(Poisson(mu)))
-                cells[randcell], mutID, neoep_val = newmutations(cells[randcell], mutID, p, neoep_dist)
+                cells[end-1], mutID, neoep_val = newmutations(cells[end-1], mutID, p, neoep_dist)
                 muts[mutID-1] = neoep_val
             end
             for i = 1:(rand(Poisson(mu)))
                 cells[end], mutID, neoep_val = newmutations(cells[end], mutID, p, neoep_dist)
                 muts[mutID-1] = neoep_val
             end
-            for i in eachindex(history.cancercells)
-                # The cell ids are temporarily assigned the cell's position in the array "cells"
-                if (history.cancercells[i].cellid == randcell)
-                    lChild = cellnode(history.cancercells[i],
-                        nothing,
-                        nothing,
-                        randcell,
-                        cells[randcell])
-                    rChild = cellnode(history.cancercells[i],
-                        nothing,
-                        nothing,
-                        length(cells),
-                        cells[end])
-                    history.cancercells[i].lChild = lChild
-                    history.cancercells[i].rChild = rChild
-                    push!(history.cancercells, lChild, rChild)
-                    # Once a cell has divided, the original cell can be ignored and is marked as "parent"
-                    history.cancercells[i].cellid = "parent"
-                    break
-                end
-            end
-
+            cells[end-1].id = length(cells) - 1
+            cells[end-1].parent = cells[randcell]
+            cells[end].parent = cells[randcell]
+            cells[end].id = length(cells)
+            cells[randcell].lChild = cells[end-1]
+            cells[randcell].rChild = cells[end]
+            cells[randcell].status = "parent"
             #note down (non)immunogenicity stored in fitness for the new cells:
-            nonimm = nonimm + 1 * (cells[randcell].epnumber < immThresh) + 1 * (cells[end].epnumber < immThresh)
+            nonimm = nonimm + 1 * (cells[end-1].epnumber < immThresh) + 1 * (cells[end].epnumber < immThresh)
 
             push!(nonimmvec, nonimm)
             push!(Nvec, N)
@@ -181,12 +167,12 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
 
         #death event if r > b but < d
         if b0 <= r < (b0 + d)
-
             #population decreases by 1, overall fitness score also decreases if it was non-zero
             N = N - 1
             nonimm = nonimm - 1 * (cells[randcell].epnumber < immThresh)
+
             #remove deleted cell
-            deleteat!(cells, randcell)
+            cells[randcell].status = "dead"
             push!(Nvec, N)
             push!(nonimmvec, nonimm)
             Δt = 1 / (Rmax * Nt) .* -log(rand())
@@ -196,7 +182,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
 
         #if every cell dies, restart simulation from a single cell again
         if (N == 0)
-            cells, mutID, muts, nonimm, N, history = start_population(p, neoep_dist, initial_mut)
+            cells, mutID, muts, nonimm, N = start_population(p, neoep_dist, initial_mut)
             push!(Nvec, N)
             push!(nonimmvec, nonimm)
             push!(tvec, t)
@@ -204,7 +190,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
 
     end
 
-    return Nvec, tvec, mutID, muts, cells, nonimmvec, history
+    return Nvec, tvec, mutID, muts, cells, nonimmvec
 end
 
 function process_mutations(cells, detLim)
@@ -215,42 +201,39 @@ function process_mutations(cells, detLim)
 
     detMutDict = Dict(k => v for (k, v) in countmap(mutVec) if v > detLim)
 
-    println("Mutations processed for ", length(cells), " cells.")
+    println("Mutations processed for ", length(cells), " total cells.")
     return detMutDict
 
 end
 
-function cellnode_to_newick(node::cellnode)
+function cellnode_to_newick(node::cancercell)
     if isnothing(node.lChild) && isnothing(node.rChild)
-        return string(node.cellid)
+        return "Cell" * string(node.id)
     else
         lChild_str = !isnothing(node.lChild) ? cellnode_to_newick(node.lChild) : ""
         rChild_str = !isnothing(node.rChild) ? cellnode_to_newick(node.rChild) : ""
         children_str = join(filter(!isempty, [lChild_str, rChild_str]), ",")
-        return "($children_str)" * string(node.cellid)
+        return "($children_str)Cell" * string(node.id)
     end
 end
 
-function lineage_to_newick(history::lineage)
-    root_node = history.cancercells[1]
+function lineage_to_newick(lineage::Vector{cancercell})
+    root_node = lineage[1]
     return cellnode_to_newick(root_node) * ";"
 end
 
 # Go through each cell -> Identify what mutations it inherited and what mutations it developed -> 
 # Write out in a tsv (Cell id, parent mutations, new (or default for progenitor cell) mutations)
-function write_tree_mutations(history, step)
-    cell_count = 0
+function write_tree_mutations(cells, step)
     cell_mutations = open("out/cell_mutations_" * string(step) * ".tsv", "a")
     write(cell_mutations, "id\tparent_mut\tnew_mut\n")
-    write(cell_mutations, string(0, "\t[]", "\t[", join(history.cancercells[1].cell.mutations |> collect
+    write(cell_mutations, string("Cell", cells[1].id, "\t[]", "\t[", join(cells[1].mutations |> collect
                                                                             |> sort, ','), "]", "\n"))
-    for j in eachindex(history.cancercells)
-        history.cancercells[j].cellid = cell_count
-        cell_count += 1
-        if (!isnothing(history.cancercells[j].parent))
-            parent_mutations = Set(history.cancercells[j].parent.cell.mutations)
-            new_mutations = setdiff(Set(history.cancercells[j].cell.mutations), parent_mutations)
-            write(cell_mutations, string(history.cancercells[j].cellid,
+    for j in eachindex(cells)
+        if (!isnothing(cells[j].parent))
+            parent_mutations = Set(cells[j].parent.mutations)
+            new_mutations = setdiff(Set(cells[j].mutations), parent_mutations)
+            write(cell_mutations, string("Cell", cells[j].id,
                 "\t[", join(parent_mutations |> collect |> sort, ','), "]",
                 "\t[", join(new_mutations |> collect |> sort, ','), "]\n"))
         end
@@ -259,13 +242,13 @@ function write_tree_mutations(history, step)
 end
 
 for i = 1:100
-    Nvec, tvec, mutID, muts, cells, immune, history = birthdeath_neoep(1, d0, popSize, p, neoep_dist, initial_mut, mu)
+    Nvec, tvec, mutID, muts, cells, immune = birthdeath_neoep(1, d0, popSize, p, neoep_dist, initial_mut, mu)
     outNDFsim = DataFrame(t=tvec, N=Nvec, nonImm=immune)
     XLSX.writetable("out/preIT_" * string(i) * ".txt", outNDFsim) #Record population size during simulation
     detMutDict = process_mutations(cells, detLim)
     writedlm("out/vaf_preIT_" * string(i) * ".txt", detMutDict) #Save mutation-VAF pairs
     writedlm("out/all_mutations_" * string(i) * ".txt", muts) #Output dictionary storing mutations and their antigenicity
-    write_tree_mutations(history, i)
-    newick_string = lineage_to_newick(history)
+    write_tree_mutations(cells, i)
+    newick_string = lineage_to_newick(cells)
     write("out/newick_" * string(i) * ".tree", newick_string)
 end

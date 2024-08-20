@@ -1,4 +1,4 @@
-popSize = 100
+popSize = 10
 detLim = 5
 d0 = 0.1
 initial_mut=0
