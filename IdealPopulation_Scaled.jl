@@ -233,16 +233,16 @@ end
 
 # Trim leaves that are either dead or no longer exist
 function prune_tree(root::cancercell)
-    function prune_recursively!(cell::cancercell)::Bool
+    function prune!(cell::cancercell)::Bool
         if cell.status == "dead"
             return true
         end
         
-        if !isnothing(cell.lChild) && prune_recursively!(cell.lChild)
+        if !isnothing(cell.lChild) && prune!(cell.lChild)
             cell.lChild = nothing
         end
         
-        if !isnothing(cell.rChild) && prune_recursively!(cell.rChild)
+        if !isnothing(cell.rChild) && prune!(cell.rChild)
             cell.rChild = nothing
         end
 
@@ -252,7 +252,7 @@ function prune_tree(root::cancercell)
         
         return false
     end
-    prune_recursively!(root)
+    prune!(root)
 end
 
 # Go through each cell -> Identify what mutations it inherited and what mutations it developed -> 
