@@ -172,7 +172,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
             N = N - 1
             nonimm = nonimm - 1 * (cells[randcell].epnumber < immThresh)
 
-            #remove deleted cell
+            #mark cell as dead
             cells[randcell].status = "dead"
             push!(Nvec, N)
             push!(nonimmvec, nonimm)
@@ -232,7 +232,8 @@ function lineage_to_newick(lineage::Vector{cancercell})
 end
 
 # Trim leaves that are either dead or no longer exist
-function prune_tree(root::cancercell)
+function prune_tree(root::cancercell, cells::Vector{cancercell})
+    remaining_cells = Vector{cancercell}()
     function prune!(cell::cancercell)::Bool
         if cell.status == "dead"
             return true
@@ -249,10 +250,13 @@ function prune_tree(root::cancercell)
         if isnothing(cell.lChild) && isnothing(cell.rChild) && cell.status == "parent"
             return true
         end
-        
+        push!(remaining_cells, cell)
         return false
     end
     prune!(root)
+    empty!(cells)
+    push!(cells, root)
+    append!(cells, remaining_cells)
 end
 
 # Go through each cell -> Identify what mutations it inherited and what mutations it developed -> 
@@ -283,7 +287,7 @@ for i = 1:100
     detMutDict = process_mutations(cells, detLim)
     writedlm("out/vaf_preIT_" * string(i) * ".txt", detMutDict) #Save mutation-VAF pairs
     writedlm("out/all_mutations_" * string(i) * ".txt", muts) #Output dictionary storing mutations and their antigenicity
-    prune_tree(cells[1])
+    prune_tree(cells[1], cells)
     write_tree_mutations(cells, i)
     newick_string = lineage_to_newick(cells)
     write("out/newick_" * string(i) * ".tree", newick_string)
