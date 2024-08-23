@@ -1,3 +1,4 @@
 out/
 CurrentSim.jl
 parameters.txt
+.venv
