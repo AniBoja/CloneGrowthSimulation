@@ -14,7 +14,7 @@
     Inspired by Marc J. Williams' CancerSeqSim (https://github.com/marcjwilliams1/CancerSeqSim.jl)
 =#
 
-using Distributions, StatsBase, DataFrames, GLM, XLSX, DelimitedFiles
+using Distributions, StatsBase, DataFrames, GLM, XLSX, DelimitedFiles, Phylo
 
 function getFitness(n)
     (1 + s * n)
@@ -32,7 +32,7 @@ mutable struct cancercell
     lChild::Union{cancercell,Nothing}
     rChild::Union{cancercell,Nothing}
     status::String
-    id::Int64
+    id::Union{Int64,String}
 end
 
 
@@ -55,12 +55,12 @@ end
 
 function copycell(cancercellold::cancercell)
     return cancercell(copy(cancercellold.mutations), copy(cancercellold.fitness),
-    copy(cancercellold.epnumber),
-    cancercellold.parent, 
-    cancercellold.lChild,
-    cancercellold.rChild,
-    cancercellold.status,
-    copy(cancercellold.id))
+        copy(cancercellold.epnumber),
+        cancercellold.parent,
+        cancercellold.lChild,
+        cancercellold.rChild,
+        cancercellold.status,
+        copy(cancercellold.id))
 end
 
 # Start population from a single progenitor cell that has an initial number of mutations, each mutation
@@ -145,10 +145,9 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
             cells[end].id = length(cells)
             cells[randcell].lChild = cells[end-1]
             cells[randcell].rChild = cells[end]
-            
+
             #note down (non)immunogenicity stored in fitness for the new cells:
             nonimm = nonimm + 1 * (cells[end-1].epnumber < immThresh) + 1 * (cells[end].epnumber < immThresh)
-
             push!(nonimmvec, nonimm)
             push!(Nvec, N)
             Δt = 1 / (Rmax * Nt) .* -log(rand())
@@ -172,7 +171,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
             N = N - 1
             nonimm = nonimm - 1 * (cells[randcell].epnumber < immThresh)
 
-            #mark cell as dead
+            #remove deleted cell
             cells[randcell].status = "dead"
             push!(Nvec, N)
             push!(nonimmvec, nonimm)
@@ -217,12 +216,12 @@ function cellnode_to_newick(node::cancercell)
         edge_length = 0
     end
     if isnothing(node.lChild) && isnothing(node.rChild)
-        return "Cell" * string(node.id) * ":" * string(edge_length)
+        return string(node.id) * ":" * string(edge_length)
     else
         lChild_str = !isnothing(node.lChild) ? cellnode_to_newick(node.lChild) : ""
         rChild_str = !isnothing(node.rChild) ? cellnode_to_newick(node.rChild) : ""
         children_str = join(filter(!isempty, [lChild_str, rChild_str]), ",")
-        return "($children_str)Cell" * string(node.id) * ":" * string(edge_length)
+        return "($children_str)" * string(node.id) * ":" * string(edge_length)
     end
 end
 
@@ -231,32 +230,33 @@ function lineage_to_newick(lineage::Vector{cancercell})
     return cellnode_to_newick(root_node) * ";"
 end
 
-# Trim leaves that are either dead or no longer exist
-function prune_tree(root::cancercell, cells::Vector{cancercell})
-    remaining_cells = Vector{cancercell}()
-    function prune!(cell::cancercell)::Bool
-        if cell.status == "dead"
-            return true
+# Drop tips, except extant tips
+function prune_tree(tree::String, cells::Vector{cancercell})
+    remove_tips = Vector{String}()
+    for cell in cells
+        if isnothing(cell.lChild) && isnothing(cell.rChild) && cell.status != "extant"
+            push!(remove_tips, string(cell.id))
         end
-        
-        if !isnothing(cell.lChild) && prune!(cell.lChild)
-            cell.lChild = nothing
-        end
-        
-        if !isnothing(cell.rChild) && prune!(cell.rChild)
-            cell.rChild = nothing
-        end
-
-        if isnothing(cell.lChild) && isnothing(cell.rChild) && cell.status == "parent"
-            return true
-        end
-        push!(remaining_cells, cell)
-        return false
     end
-    prune!(root)
-    empty!(cells)
-    push!(cells, root)
-    append!(cells, remaining_cells)
+    parsed_tree = parsenewick(tree)
+    if !isempty(remove_tips)
+        droptips!(parsed_tree, remove_tips)
+    end
+    return parsed_tree
+end
+
+function rename_cells(cells::Vector{cancercell})
+    root = cells[1]
+    root.id = "1"
+    function renaming!(cell::cancercell)
+        if !isnothing(cell.rChild) && !isnothing(cell.lChild)
+            cell.lChild.id = cell.id * ".1"
+            renaming!(cell.lChild)
+            cell.rChild.id = cell.id * ".2"
+            renaming!(cell.rChild)
+        end
+    end
+    renaming!(root)
 end
 
 # Go through each cell -> Identify what mutations it inherited and what mutations it developed -> 
@@ -264,17 +264,17 @@ end
 function write_tree_mutations(cells, step)
     cell_mutations = open("out/cell_mutations_" * string(step) * ".tsv", "a")
     write(cell_mutations, "id\tparent_mut\tnew_mut\ttip\n")
-    write(cell_mutations, string("Cell", cells[1].id, "\t[]", "\t[", join(cells[1].mutations |> collect
-                                                                            |> sort, ','), "]", "\tfalse", "\n"))
+    write(cell_mutations, string(cells[1].id, "\t[]", "\t[", join(cells[1].mutations |> collect
+                                                                          |> sort, ','), "]", "\tfalse", "\n"))
     for i in eachindex(cells)
         if (!isnothing(cells[i].parent))
             parent_mutations = Set(cells[i].parent.mutations)
             new_mutations = setdiff(Set(cells[i].mutations), parent_mutations)
             tip = cells[i].status == "extant" ? "true" : "false"
-            write(cell_mutations, string("Cell", cells[i].id,
+            write(cell_mutations, string(cells[i].id,
                 "\t[", join(parent_mutations |> collect |> sort, ','), "]",
                 "\t[", join(new_mutations |> collect |> sort, ','), "]",
-                "\t",tip,"\n"))
+                "\t", tip, "\n"))
         end
     end
     close(cell_mutations)
@@ -287,8 +287,9 @@ for i = 1:100
     detMutDict = process_mutations(cells, detLim)
     writedlm("out/vaf_preIT_" * string(i) * ".txt", detMutDict) #Save mutation-VAF pairs
     writedlm("out/all_mutations_" * string(i) * ".txt", muts) #Output dictionary storing mutations and their antigenicity
-    prune_tree(cells[1], cells)
+    rename_cells(cells)
     write_tree_mutations(cells, i)
     newick_string = lineage_to_newick(cells)
-    write("out/newick_" * string(i) * ".tree", newick_string)
+    pruned_tree = prune_tree(newick_string, cells)
+    Phylo.write(string("out/newick_", i, ".tree"), pruned_tree)
 end

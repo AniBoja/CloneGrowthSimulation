@@ -8,7 +8,7 @@ for arg in ARGS
     for row in cell_mutations
         if (row[4])
             cell_id = row[1]
-            write(fasta_output, string(">", cell_id, "\n"))
+            write(fasta_output, string(">\"", cell_id, "\"\n"))
             parent_mutations = []
             new_mutations = []
             mutations_present = zeros(Int, number_mutations)
