@@ -171,7 +171,7 @@ function birthdeath_neoep(b0, d0, Nmax, p, neoep_dist, initial_mut=10, mu=1, imm
             N = N - 1
             nonimm = nonimm - 1 * (cells[randcell].epnumber < immThresh)
 
-            #remove deleted cell
+            #mark cell as dead
             cells[randcell].status = "dead"
             push!(Nvec, N)
             push!(nonimmvec, nonimm)

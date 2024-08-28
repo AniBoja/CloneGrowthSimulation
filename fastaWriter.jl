@@ -2,7 +2,7 @@ using CSV
 
 for arg in ARGS
     all_mutations = CSV.File("out/all_mutations_" * arg * ".txt", delim="\t")
-    number_mutations = length(all_mutations) + 1
+    number_mutations = length(all_mutations[1]) + 1
     cell_mutations = CSV.File("out/cell_mutations_" * arg * ".tsv", delim="\t")
     fasta_output = open("cell_mutations_" * arg * ".fasta", "a")
     for row in cell_mutations

@@ -1,9 +1,22 @@
+#desired number of extant cells
 popSize = 10
+
+#number of cells a mutation needs to be present in to be considered "significant"
 detLim = 5
+
+#basal death rate
 d0 = 0.1
+
+#number of mutations in progenitor cell
 initial_mut=0
+
+#rate of being assigned antigenicty
 p = 0.1
+
+#rate of mutations
 mu = 1
+
+#strength of negative selection
 s = -0.8
 
 using Distributions
